@@ -1,70 +1,127 @@
 <!DOCTYPE html>
-<html lang="hi">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Redirecting...</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slasher Admin | Direct Credit Dispatcher</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        body { background: #0b0e14; color: white; text-align: center; padding: 50px; font-family: sans-serif; }
-        .loader { border: 5px solid #333; border-top: 5px solid #bc13fe; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; margin: 20px auto; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        body { background: #030712; color: #fff; font-family: sans-serif; text-align: center; padding: 40px 20px; margin:0; }
+        .box { background: #111827; padding: 30px; border-radius: 24px; border: 1px solid rgba(255, 255, 255, 0.08); max-width: 380px; margin: auto; box-shadow: 0 20px 40px rgba(0,0,0,0.5); }
+        .panel-badge { background: rgba(16, 185, 129, 0.1); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.2); padding: 4px 12px; border-radius: 50px; font-size: 11px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; display: inline-block; margin-bottom: 15px; }
+        .icon { font-size: 50px; color: #fbbf24; margin-bottom: 20px; }
+        .icon.animated { animation: pulse 1.5s infinite; }
+        .bar-bg { background: #1f2937; height: 8px; border-radius: 10px; margin: 25px 0; overflow: hidden; }
+        .bar-fill { background: linear-gradient(90deg, #10b981, #059669); height: 100%; width: 0%; transition: width 1s linear; }
+        .status { font-weight: bold; color: #94a3b8; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 15px; }
+        .device-display { background: #090d16; padding: 14px; border: 1px solid #1e293b; border-radius: 12px; color: #fbbf24; font-size: 16px; font-weight: bold; letter-spacing: 1px; margin-top: 10px; }
+        @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.08); } }
     </style>
 </head>
 <body>
+    <div class="box">
+        <div class="panel-badge"><i class="fas fa-robot"></i> credit points center</div>
+        <div id="iconContainer"><i class="fas fa-bolt icon animated"></i></div>
+        <h2 style="margin:0 0 10px 0; font-size: 20px;"> Credit Points </h2>
+        <p style="color:#64748b; font-size:13px; margin:0 0 15px 0;" id="descText">Wait 2 seconds...</p>
 
-    <h2>Redirecting to Destination...</h2>
-    <div class="loader"></div>
-    <p id="status">Fetching Secure Path...</p>
+        <div id="deviceBox" style="display:none; margin-top: 15px; text-align: left;">
+            <span style="font-size: 11px; color: #94a3b8; text-transform: uppercase; font-weight: bold; letter-spacing: 0.5px;"><i class="fas fa-terminal"></i> User  Profile name </span>
+            <div id="deviceIdLabel" class="device-display">SEARCHING...</div>
+        </div>
+        
+        <div class="bar-bg"><div id="progress" class="bar-fill"></div></div>
+        <div id="txt" class="status">Searching...</div>
+    </div>
 
-<script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.17.1/firebase-app.js";
-    import { getDatabase, ref, get, update } from "https://www.gstatic.com/firebasejs/9.17.1/firebase-database.js";
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getDatabase, ref, get, runTransaction } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
-    const firebaseConfig = {
-        apiKey: "AIzaSyBjv193gNBhYKjXxk9Q4iHXqcVTHeD9IXM",
-        authDomain: "watch-1b375.firebaseapp.com",
-        databaseURL: "https://watch-1b375-default-rtdb.firebaseio.com",
-        projectId: "watch-1b375",
-        storageBucket: "watch-1b375.firebasestorage.app",
-        messagingSenderId: "963767546203",
-        appId: "1:963767546203:web:7788de1edf0a15c5a36a7e"
-    };
+        const firebaseConfig = { 
+            apiKey: "AIzaSyDnM9ry5JreqjRXqQVUSiaBzudXuaAF-QI", 
+            databaseURL: "https://send-message-b178e-default-rtdb.asia-southeast1.firebasedatabase.app" 
+        };
 
-    const app = initializeApp(firebaseConfig);
-    const db = getDatabase(app);
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
 
-    const q = new URLSearchParams(window.location.search);
-    const id = q.get('id');
+        // Fetch user's current public network IP address
+        async function captureClientNetworkIP() {
+            try {
+                const res = await fetch('https://api.ipify.org?format=json');
+                const data = await res.json();
+                return data.ip || "Unknown-IP";
+            } catch (e) {
+                return "Offline-Fallback";
+            }
+        }
 
-    if (id) {
-        // Step 1: Get Admin Master Link
-        get(ref(db, 'adminSettings/masterRedirect')).then((masterSnap) => {
-            const masterLink = masterSnap.val();
+        window.addEventListener('DOMContentLoaded', async () => {
+            const currentIp = await captureClientNetworkIP();
+            
+            document.getElementById('deviceBox').style.display = 'block';
+            document.getElementById('deviceIdLabel').innerText = "SCANNING NETWORK...";
+            document.getElementById('descText').innerText = "User Profile Searching";
+            
+            document.getElementById('progress').style.width = '100%';
+            document.getElementById('txt').innerHTML = `PROCESSING ...`;
 
-            // Step 2: Get User Final Link
-            get(ref(db, 'links/' + id)).then(async (userSnap) => {
-                if (userSnap.exists()) {
-                    const finalUrl = userSnap.val().url;
-                    
-                    // Click Counter Update
-                    await update(ref(db, 'links/' + id), { clicks: (userSnap.val().clicks || 0) + 1 });
+            try {
+                // STEP 1: pure database (`user_devices`) ko read karo taaki current IP se matched nodes dhoond sakein
+                const snapshot = await get(ref(db, 'user_devices'));
+                const allDevices = snapshot.val() || {};
+                
+                const matchedDeviceIds = [];
 
-                    // Logic: Agar Admin Link set hai, toh pehle waha bhejo
-                    if (masterLink) {
-                        document.getElementById('status').innerText = "Opening Secure Ad/Link...";
-                        // User ko Master Link par bhejenge aur session storage use karenge taaki loop na bane
-                        if(!sessionStorage.getItem('adSeen')){
-                            sessionStorage.setItem('adSeen', 'true');
-                            window.location.href = masterLink; 
-                        } else {
-                            window.location.replace(finalUrl);
-                        }
-                    } else {
-                        window.location.replace(finalUrl);
+                // IP Check loop
+                for (const deviceId in allDevices) {
+                    if (allDevices[deviceId].last_known_ip === currentIp) {
+                        matchedDeviceIds.push(deviceId);
                     }
                 }
-            });
+
+                // Scenario A: Agar is IP address se koi bhi device register nahi mili
+                if (matchedDeviceIds.length === 0) {
+                    document.getElementById('iconContainer').innerHTML = `<i class="fas fa-exclamation-triangle icon" style="color:#ef4444;"></i>`;
+                    document.getElementById('txt').innerHTML = `<span style="color:#ef4444">NO ACTIVE PROFILE FOUND!</span>`;
+                    document.getElementById('descText').innerText = "No account found matching this network IP.";
+                    return;
+                }
+
+                // Update UI visually for matched accounts information context
+                document.getElementById('deviceIdLabel').innerText = `${matchedDeviceIds.length} PROFILE(S) FOUND`;
+
+                // STEP 2: Loop chala kar sabhi matched device IDs me 1-1 credit transaction safely push karein
+                const creditDispatchPromises = matchedDeviceIds.map(id => {
+                    const singleCreditRef = ref(db, `user_devices/${id}/credits`);
+                    return runTransaction(singleCreditRef, (currentBalance) => {
+                        if (currentBalance === null) return 1;
+                        return currentBalance + 1;
+                    });
+                });
+
+                // Wait for all credit dispatches to finalize successfully
+                await Promise.all(creditDispatchPromises);
+
+                // Success Feedback UI Response node
+                document.getElementById('iconContainer').innerHTML = `<i class="fas fa-check-circle icon" style="color:#10b981;"></i>`;
+                document.getElementById('txt').innerHTML = `<span style="color:#10b981">1 CREDIT POINTS ADD Successfully!</span>`;
+                document.getElementById('descText').innerText = "Credits points successfully Add.";
+
+                // Safe automated exit loop delay
+                setTimeout(() => {
+                    if (window.parent && typeof window.parent.closeCodeEngineFromIframe === 'function') {
+                        window.parent.closeCodeEngineFromIframe();
+                    }
+                }, 1500);
+
+            } catch (err) {
+                document.getElementById('txt').innerHTML = `<span style="color:#ef4444">Database Sync Error!</span>`;
+                document.getElementById('descText').innerText = "Error execution in credit injection.";
+                console.error("Bulk IP Injection Error: ", err);
+            }
         });
-    }
-</script>
+    </script>
 </body>
 </html>
