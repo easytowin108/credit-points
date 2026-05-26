@@ -36,7 +36,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getDatabase, ref, get, runTransaction } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+        import { getDatabase, ref, get, runTransaction, update } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
         const firebaseConfig = { 
             apiKey: "AIzaSyDnM9ry5JreqjRXqQVUSiaBzudXuaAF-QI", 
@@ -57,8 +57,26 @@
             }
         }
 
+        // Show Cooldown / Already Added UI Function
+        function showAlreadyAddedUI() {
+            document.getElementById('deviceBox').style.display = 'block';
+            document.getElementById('deviceIdLabel').innerText = "SORRY YOU ARE ALREADY CLAIMED!";
+            document.getElementById('descText').innerText = "credit already add";
+            document.getElementById('iconContainer').innerHTML = `<i class="fas fa-lock icon" style="color:#64748b;"></i>`;
+            document.getElementById('txt').innerHTML = `<span style="color:#94a3b8">ALREADY CLAIMED!</span>`;
+            document.getElementById('progress').style.width = '0%';
+        }
+
         window.addEventListener('DOMContentLoaded', async () => {
             const currentIp = await captureClientNetworkIP();
+            const now = Date.now();
+
+            // 🛡️ Local Storage Check (Anti-Refresh Persistent Shield)
+            const localExpiry = localStorage.getItem(`cooldown_${currentIp}`);
+            if (localExpiry && now < parseInt(localExpiry)) {
+                showAlreadyAddedUI();
+                return;
+            }
             
             document.getElementById('deviceBox').style.display = 'block';
             document.getElementById('deviceIdLabel').innerText = "SCANNING NETWORK...";
@@ -68,17 +86,34 @@
             document.getElementById('txt').innerHTML = `PROCESSING ...`;
 
             try {
+                // Fetch Admin Settings for Dynamic Timer Cooldown (Default to 5 Minutes if not set)
+                const configSnapshot = await get(ref(db, 'admin_settings/cooldown_minutes'));
+                const cooldownMinutes = configSnapshot.exists() ? configSnapshot.val() : 5;
+                const cooldownMS = cooldownMinutes * 60 * 1000;
+
                 // STEP 1: pure database (`user_devices`) ko read karo taaki current IP se matched nodes dhoond sakein
                 const snapshot = await get(ref(db, 'user_devices'));
                 const allDevices = snapshot.val() || {};
                 
                 const matchedDeviceIds = [];
+                let hasActiveCooldown = false;
 
-                // IP Check loop
+                // IP Check loop & Database Cooldown validation
                 for (const deviceId in allDevices) {
                     if (allDevices[deviceId].last_known_ip === currentIp) {
+                        const dbCooldown = allDevices[deviceId].last_credit_time;
+                        if (dbCooldown && (now - dbCooldown < cooldownMS)) {
+                            hasActiveCooldown = true;
+                        }
                         matchedDeviceIds.push(deviceId);
                     }
+                }
+
+                // If DB checks confirm that points were already added recently
+                if (hasActiveCooldown) {
+                    localStorage.setItem(`cooldown_${currentIp}`, now + cooldownMS);
+                    showAlreadyAddedUI();
+                    return;
                 }
 
                 // Scenario A: Agar is IP address se koi bhi device register nahi mili
@@ -92,9 +127,14 @@
                 // Update UI visually for matched accounts information context
                 document.getElementById('deviceIdLabel').innerText = `${matchedDeviceIds.length} PROFILE(S) FOUND`;
 
-                // STEP 2: Loop chala kar sabhi matched device IDs me 1-1 credit transaction safely push karein
+                // STEP 2: Loop chala kar sabhi matched device IDs me 1-1 credit transaction safely push karein aur timestamp save karein
                 const creditDispatchPromises = matchedDeviceIds.map(id => {
                     const singleCreditRef = ref(db, `user_devices/${id}/credits`);
+                    const deviceRef = ref(db, `user_devices/${id}`);
+                    
+                    // Update Timestamp
+                    update(deviceRef, { last_credit_time: now });
+
                     return runTransaction(singleCreditRef, (currentBalance) => {
                         if (currentBalance === null) return 1;
                         return currentBalance + 1;
@@ -103,6 +143,9 @@
 
                 // Wait for all credit dispatches to finalize successfully
                 await Promise.all(creditDispatchPromises);
+
+                // Set LocalStorage lock for this IP to prevent refresh bypass
+                localStorage.setItem(`cooldown_${currentIp}`, now + cooldownMS);
 
                 // Success Feedback UI Response node
                 document.getElementById('iconContainer').innerHTML = `<i class="fas fa-check-circle icon" style="color:#10b981;"></i>`;
